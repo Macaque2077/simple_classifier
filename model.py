@@ -10,7 +10,7 @@ class residual(nn.Module):
 	def  forward(self, x):
 		return self.fn(x) + x
 
-def Net(dim,depth,kernel_size=9,patch_size=7,n_classes=10): 
+def Net(dim,depth,kernel_size=7,patch_size=6,n_classes=10): 
 	return nn.Sequential( 
 		nn.Conv2d(3,dim,kernel_size=patch_size,stride=patch_size), 
 		nn.GELU(), 
@@ -18,6 +18,7 @@ def Net(dim,depth,kernel_size=9,patch_size=7,n_classes=10):
 			*[nn.Sequential( 
 				residual(nn.Sequential( 
 					nn.Conv2d(dim,dim,kernel_size,groups=dim,padding="same"), 
+					nn.Dropout(0.5),
 					nn.GELU(), 
 					nn.BatchNorm2d(dim) 
 				)), 

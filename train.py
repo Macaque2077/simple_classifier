@@ -20,7 +20,7 @@ logger.info(msg=torch.__version__)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 logger.info(msg='Device:  {device}')
 
-time_now = datetime.datetime.now().__format__('%H:%M:%S')
+time_now = datetime.datetime.now().__format__(r'%y%m%d_%H_%M')
 model_dir = f'./models/{time_now}'
 os.makedirs(model_dir)
 writer = SummaryWriter(model_dir+'/logs')
@@ -32,7 +32,7 @@ class trainer():
 		self.criterion = nn.CrossEntropyLoss()
 		self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=self.wdecay)
 		self.model.to(device)
-		self.total_epochs = 100
+		self.total_epochs = 150
 		self.epoch=0
 		self.lowest_validation_loss = None
 		self.lowest_validation_accuracy = None

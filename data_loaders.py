@@ -3,15 +3,16 @@ import torchvision
 import torchvision.transforms as T
 
 batch_size = 64
-torch.manual_seed(7341)
+torch.manual_seed(998)
 
 
 train_transformer = T.transforms.Compose([
 	T.RandomHorizontalFlip(0.5),
 	T.RandomResizedCrop(32,scale=(0.7,1)), #NOTE dont think cropping too much will be good
-	T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1,hue=0.2),
-	T.RandomPerspective(0.1),
+	T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,hue=0.2),
+	T.RandomPerspective(0.3, p=0.2),
 	T.ToTensor(),
+	T.RandomErasing(0.5, scale=(0.01,0.04)),
 	T.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)) 
 
 ])
@@ -24,7 +25,7 @@ test_transformer = T.transforms.Compose([
 dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                         download=False, transform=train_transformer)
 
-train_size = int(0.9*len(dataset))
+train_size = int(0.8*len(dataset))
 validation_size  = len(dataset)-train_size                                      
 trainset, validationset = torch.utils.data.random_split(dataset, [train_size, validation_size])
 
