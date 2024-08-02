@@ -1,6 +1,8 @@
+#Architecture based off of: https://arxiv.org/pdf/2201.09792v1
+
 import torch.nn as nn
 
-class Residual(nn.module):
+class residual(nn.Module):
 	def __init__(self, fn):
 		super().__init__()
 		self.fn = fn
@@ -8,13 +10,13 @@ class Residual(nn.module):
 	def  forward(self, x):
 		return self.fn(x) + x
 
-def ConvMixer(dim,depth,kernel_size=9,patch_size=7,n_classes=1000): 
+def Net(dim,depth,kernel_size=9,patch_size=7,n_classes=10): 
 	return nn.Sequential( 
 		nn.Conv2d(3,dim,kernel_size=patch_size,stride=patch_size), 
 		nn.GELU(), 
 		nn.BatchNorm2d(dim), 
 			*[nn.Sequential( 
-				Residual(nn.Sequential( 
+				residual(nn.Sequential( 
 					nn.Conv2d(dim,dim,kernel_size,groups=dim,padding="same"), 
 					nn.GELU(), 
 					nn.BatchNorm2d(dim) 
