@@ -22,9 +22,9 @@ test_transformer = T.transforms.Compose([
 ])
 
 dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
-                                        download=True, transform=train_transformer)
+                                        download=False, transform=train_transformer)
 
-train_size = int(0.8*len(dataset))
+train_size = int(0.9*len(dataset))
 validation_size  = len(dataset)-train_size                                      
 trainset, validationset = torch.utils.data.random_split(dataset, [train_size, validation_size])
 
@@ -35,7 +35,7 @@ validationloader = torch.utils.data.DataLoader(validationset, batch_size=batch_s
                                           shuffle=True, num_workers=2)
 
 testset = torchvision.datasets.CIFAR10(root='./data', train=False,
-                                       download=True, transform=test_transformer)
+                                       download=False, transform=test_transformer)
 testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                          shuffle=False, num_workers=2)
 

@@ -1,76 +1,130 @@
 from model import *
 from data_loaders import *
+import torch.nn as nn
+import torch
 
+import numpy as np
 import torch.optim as optim
 
-wdecay = 0.01
-model = Net(256, 12)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=wdecay)
+import logging #TODO use this
+
+logging.basicConfig(format="%(levelname)s:%(name)s:%(message)s" ,level=logging.INFO)
+ConsoleOutputHandler = logging.StreamHandler()
+logger = logging.getLogger('training')
+logger.addHandler(ConsoleOutputHandler)
+
+
+logger.info(torch.__version__)
+
+
 model_dir = './models/'
-lowest_validation_loss = None
-lowest_validation_accuracy = None
 
 
-for epoch in range(100):  # loop over the dataset multiple times
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+logger.info('Device: ', device)
 
-	train_loss = 0.0
-	train_accuracy = 0.0
-	for step, data in enumerate(trainloader, 0):
-		# get the inputs; data is a list of [inputs, labels]
-		inputs, labels = data
 
-		# zero the parameter gradients
-		optimizer.zero_grad()
+class trainer():
+	def __init__(self, net):
+		self.model= net
+		self.wdecay = 0.01
+		self.criterion = nn.CrossEntropyLoss()
+		self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=self.wdecay)
+		self.model.to(device)
+		self.total_epochs = 100
+		self.epoch=0
+		self.lowest_validation_loss = None
+		self.lowest_validation_accuracy = None
 
-		# forward + backward + optimize
-		outputs = model(inputs)
-		loss = criterion(outputs, labels)
-		loss.backward()
-		optimizer.step()
+	def calculate_params(self):
+		return(sum(p.numel() for p in self.model.parameters()))
 
-		# print statistics
-		train_loss += loss.item()
-		train_accuracy += torch.sum(torch.max(outputs.data, 1)[1] == labels)
-		if step % 2000 == 1999:    # print every 2000 mini-batches
-			print(f'[{epoch + 1}, {step + 1:5d}] loss: {train_loss / 2000:.3f} accuracy: {train_accuracy / step:.3f}')
-			train_loss = 0.0
+	def save_model(self, save_name:str):
+		logger.info(f'saving model at: {save_name}')
+		torch.save(self.model.state_dict(), save_name+'.wb')
 
-		if step % 10 == 0:	
-			validation_loss =0 
-			validation_accuracy = 0
-			with torch.no_grad():
-				for data in validationloader:
-					images, labels = data
-					# calculate outputs by running images through the network
-					outputs = model(images)
-					# the class with the highest energy is what we choose as prediction
-					_, predicted = torch.max(outputs.data, 1)
-					loss = criterion(outputs, labels)
+	def validate_epoch(self):
+		validation_loss =0 
+		validation_accuracy = 0
+		self.model.eval()
+		with torch.no_grad():
+			for data in validationloader:
+				images, labels = data[0].to(device), data[1].to(device)
+				# Infer
+				inferences = self.model(images)
 
-					validation_loss += loss.item()
-					validation_accuracy += torch.sum(torch.max(outputs.data, 1)[0] == labels)
-				if lowest_validation_loss == None: lowest_validation_loss = validation_loss
-				if lowest_validation_accuracy ==None: lowest_validation_accuracy = validation_accuracy
-				if validation_loss < lowest_validation_loss:
-					print('NEW LOWEST VAL LOSS')
-					lowest_validation_loss = validation_loss
-					save_name = f'{model_dir}_{validation_loss}_{epoch}'
-					print(f'saving model at: {save_name}')
-					torch.save(model.state_dict(), save_name)
-			print(f'[{epoch + 1}, {step + 1:5d}] Val_loss: {validation_loss / 2000:.3f} accuracy: {validation_accuracy / step:.3f}')
-		
-test_loss = 0 
-test_accuracy = 0
-for data in testloader:
-	images, labels = data
-	# calculate outputs by running images through the network
-	outputs = model(images)
-	# the class with the highest energy is what we choose as prediction
-	_, predicted = torch.max(outputs.data, 1)
-	loss = criterion(outputs, labels)
-	test_loss += loss.item()
-	test_accuracy += torch.sum(torch.max(outputs.data, 1) == labels)
-	print(f'END RESULT test_loss: {test_loss / len(testloader):.3f} accuracy: {validation_accuracy / len(testloader):.3f}')
+				loss = self.criterion(inferences, labels)
 
-print('Finished Training')
+				validation_loss += loss.item()
+				
+				validation_accuracy += torch.sum(torch.max(inferences.data, 1)[1] == labels)
+			
+			if self.lowest_validation_loss == None: self.lowest_validation_loss = validation_loss
+			if self.lowest_validation_accuracy ==None: self.lowest_validation_accuracy = validation_accuracy
+
+			if validation_loss < self.lowest_validation_loss:
+				logger.info('NEW LOWEST VAL LOSS')
+				self.lowest_validation_loss = validation_loss
+				save_name = f'{model_dir}_{validation_loss}_{self.epoch}'
+				self.save_model(save_name)
+
+			logger.info(f'{self.epoch + 1}: Val_loss: {validation_loss / len(validationloader):.3f} accuracy: {100*(validation_accuracy // len(validationloader)):.3f}')
+	
+	def run_epoch(self):
+		# loop over the dataset multiple times
+		self.model.train()
+		train_loss = 0.0
+		train_accuracy = 0.0
+		for step, data in enumerate(trainloader, 0):
+			# get the inputs; data is a list of [inputs, labels]
+			inputs, labels = data[0].to(device), data[1].to(device)
+
+			# zero the parameter gradients
+			self.optimizer.zero_grad()
+
+			# infer, calc loss, adjust
+			inferences = self.model(inputs)
+			loss = self.criterion(inferences, labels)
+			loss.backward()
+			self.optimizer.step()
+
+			# print statistics
+			train_loss += loss.item()
+			train_accuracy += torch.sum(torch.max(inferences.data, 1)[1] == labels)
+			if step % 100 == 99:    # print every 100 mini-batches
+				logger.info(f'{self.epoch + 1}-{step + 1:5d} train_loss: {train_loss / 100:.3f} train_accuracy: {train_accuracy / step:.3f}')
+				train_loss = 0.0
+
+		self.validate_epoch()
+	
+	def train_loop(self):
+		logger.info('Total params: ', self.calculate_params())
+		for epoch in range(self.total_epochs): 
+			self.epoch = epoch
+			self.run_epoch()
+		self.save_model('last')
+
+	def test_model(self):
+		test_loss = 0 
+		test_accuracy = 0
+		for data in testloader:
+			images, labels = data[0].to(device), data[1].to(device)
+			# calculate outputs by running images through the network
+			inferences = self.model(images)
+			# the class with the highest energy is what we choose as prediction
+			_, predicted = torch.max(inferences.data, 1)
+			loss = self.criterion(predicted, labels)
+			test_loss += loss.item()
+			test_accuracy += torch.sum(torch.max(inferences.data, 1) == labels)
+			logger.info(f'END RESULT test_loss: {test_loss / len(testloader):.3f} accuracy: {test_accuracy / len(testloader):.3f}')
+
+if __name__ == '__main__':
+	logger.info('starting')
+	classifier = trainer(Net(256, 8))
+	total_parameters = classifier.calculate_params()
+	logger.info(f'Total number of parameters: {total_parameters}')
+	classifier.train_loop()
+	classifier.test_model()
+
+
+	logger.info('Finished Training')
