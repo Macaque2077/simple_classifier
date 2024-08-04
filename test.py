@@ -1,3 +1,4 @@
+#test script for running model inference
 import torch
 from train_config import *
 from model import *

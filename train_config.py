@@ -1,3 +1,4 @@
+#config file for model params, made it easier to test
 learning_rate = 0.02
 weight_decay = 0.005
 width = 256

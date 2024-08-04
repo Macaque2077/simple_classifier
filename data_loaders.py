@@ -1,3 +1,4 @@
+# get dataloaders from CIFAR, split data if needed
 import torch
 import torchvision
 import torchvision.transforms as T
@@ -27,8 +28,6 @@ test_transformer = T.transforms.Compose([
 
 classes = ('plane', 'car', 'bird', 'cat',
 		'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-
 
 def get_data(split = True):
 

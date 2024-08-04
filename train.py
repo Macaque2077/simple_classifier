@@ -1,30 +1,35 @@
-from model import *
-from data_loaders import get_data
+# Run training for ConvMixer model
+
 import torch.nn as nn
 import torch
 import os
 import datetime
 from time import time 
-
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import confusion_matrix
 
 import torch.optim as optim
 import logging 
+
 from train_config import *
+from model import *
+from data_loaders import get_data
 
-
+#CIFAR classes
 classes = ('plane', 'car', 'bird', 'cat',
 		'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
+# Get data loaders
 trainloader, testloader = get_data(split=False)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('train')
 
+# get time for model save dir
 time_now = datetime.datetime.now().__format__(r'%y%m%d_%H_%M')
 
+#model trainer class
 class trainer():
 	def __init__(self, net):
 		self.model= net
@@ -38,6 +43,7 @@ class trainer():
 		self.lowest_validation_loss = None
 		self.highest_validation_accuracy = 0.0
 
+	#Schedule LR
 	def schedule_lr(self):
 		total_steps = self.total_epochs
 		step_size_up = total_steps * 2 // 5
@@ -55,7 +61,7 @@ class trainer():
 			cycle_momentum=False      # Set to True if using momentum-based optimizers
 		)
 
-	 # Function to load model and optimizer state
+	 # Function to load model
 	def load_model(self, checkpoint_path):
 		checkpoint = torch.load(checkpoint_path)
 		self.model = checkpoint
@@ -89,17 +95,17 @@ def validate_epoch(convM, validationloader):
 				inferences = convM.model(images)
 				loss = convM.criterion(inferences, labels)
 
+			# Calc and store metrics
 			validation_loss += loss.item() * labels.size(0)
 			val_count += labels.size(0)
-
 			accuracy = torch.sum(torch.max(inferences.data, 1)[1] == labels)
 			validation_accuracy += accuracy
 		
+		# Store best performance for saving model
 		end_of_epoch_acc = 100*(validation_accuracy / val_count).item()
 		if convM.lowest_validation_loss == None: 
 			convM.lowest_validation_loss = validation_loss
 		
-
 		if end_of_epoch_acc > convM.highest_validation_accuracy:
 			logger.info(msg='HIGHEST VAL ACC')
 			print(end_of_epoch_acc)
@@ -108,18 +114,14 @@ def validate_epoch(convM, validationloader):
 			save_name = os.path.join(model_dir,f'{end_of_epoch_acc:.3f}_{convM.epoch}')
 			convM.save_model(save_name)
 			
-		print(loss.item())
-
-		print('inferences: ', torch.max(inferences.data, 1)[1])
-		print('labels: ', labels)
-		#writer.add_scalar("Accuracy/validation", accuracy, self.epoch)
+		# Log results and pass info to tensorboard writer
 		logger.info(msg=f'{convM.epoch + 1}: Val accuracy%: {end_of_epoch_acc:.3f}')
 		writer.add_scalar("Loss/validation", round(validation_loss / len(validationloader), 3), convM.epoch)
 		writer.add_scalar("Accuracy/validation", end_of_epoch_acc, convM.epoch)
 	
+# loop over the dataset multiple times
 def run_epoch(convM, trainloader,validationloader):	
-	# loop over the dataset multiple times
-	
+
 	train_loss = 0.0
 	train_accuracy = 0.0
 	train_count = 0
@@ -128,8 +130,7 @@ def run_epoch(convM, trainloader,validationloader):
 		convM.model.train()
 		# get the inputs; data is a list of [inputs, labels]
 		images, labels = images.cuda(), labels.cuda()
-		
-
+	
 		# zero the parameter gradients
 		convM.optimizer.zero_grad()
 
@@ -137,7 +138,8 @@ def run_epoch(convM, trainloader,validationloader):
 		with torch.cuda.amp.autocast():
 			inferences = convM.model(images)
 			loss = convM.criterion(inferences, labels)
-					
+		
+		# Back Prop
 		convM.scaler.scale(loss).backward()
 		convM.scaler.unscale_(convM.optimizer)
 		nn.utils.clip_grad_norm_(convM.model.parameters(), 1.0)
@@ -145,6 +147,7 @@ def run_epoch(convM, trainloader,validationloader):
 		convM.scheduler.step()
 		convM.scaler.update()			
 
+		# Calc and store metrics
 		train_loss += loss.item()* labels.size(0)
 		total_train_loss +=train_loss
 		train_accuracy += torch.sum(torch.max(inferences.data, 1)[1] == labels)
@@ -158,7 +161,7 @@ def run_epoch(convM, trainloader,validationloader):
 	validate_epoch(convM, validationloader)
 		
 		
-	
+# Run n number of epochs
 def train_loop(convM, trainloader, validationloader):
 	
 	for epoch in range(0, convM.total_epochs, 1): 
@@ -168,6 +171,7 @@ def train_loop(convM, trainloader, validationloader):
 	save_name = os.path.join(model_dir,f'Last_{convM.epoch}')
 	convM.save_model(save_name)
 
+# Evaluate model on CIFAR test set and measure results
 def test_model(convM, testloader):
 	test_loss = 0 
 	test_accuracy = 0
@@ -176,7 +180,9 @@ def test_model(convM, testloader):
 	all_preds = []
 	all_labels = []
 	start = datetime.datetime.now()
-	convM.model.cpu()
+	device = torch.device( 'cpu')
+	convM.model.to(device)
+	#convM.model.cpu()
 	with torch.no_grad():
 		for data in testloader:
 			images, labels = data[0], data[1]
@@ -200,9 +206,11 @@ def test_model(convM, testloader):
 	logger.info(msg=f'Images processed:{test_count}')
 	logger.info(msg=f'time taken to test: {duration.seconds*1000}ms')
 	logger.info(msg=f'time taken per image: {(duration.seconds*1000)/test_count:.3f}ms')
-	print(confusion_matrix(all_labels,all_preds, labels=classes ))
+	print(classes)
+	print(confusion_matrix(all_labels,all_preds ))
 
 if __name__ == '__main__':
+	# Set device to GPU for training
 	logger.info(msg=torch.__version__)
 	device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 	logger.info(msg=f'Device:  {device}')
